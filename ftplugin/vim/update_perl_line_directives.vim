@@ -39,10 +39,7 @@ package Updateperllinedirectives;
 use strict;
 use warnings FATAL => 'all';
 use warnings NONFATAL => 'redefine';
-use Data::Dumper;
 use File::Temp qw( tempfile );
-use IO::Handle;
-use Storable qw( nstore retrieve );
 
 sub UpdateLineDirectives_perl #{{{3
 {
@@ -62,7 +59,9 @@ sub UpdateLineDirectives_perl #{{{3
         my $cl = $nbc[$ii];
         my $nl = $nbc[$ii + 1];
         if ( $cl =~ m/\s*perl <<\w+\s*$/ ) {
-            my $new_nl = "# line ".($ii + 2)." \"$fn\"";   # New next line.
+            # +1 (because 1-based) +1 (talking next line) +1 (because perl line
+            # directives refer to the number of the next line) == +3
+            my $new_nl = "# line ".($ii + 3)." \"$fn\"";   # New next line.
             if ( $nl =~ m/^#\s+line\s+\d+\s+".+"\s*$/ ) {
                 $nbc[$ii + 1] = $new_nl;
             }
