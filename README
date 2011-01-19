@@ -1,0 +1,14 @@
+This is a mirror of http://www.vim.org/scripts/script.php?script_id=3406
+
+This script eases development of vim scripts that use embedded perl code by automatically adding or updating line directives in perl code blocks.  So for example:
+
+     perl <<EOF
+
+will automagicaly become
+
+     perl <<EOF
+     # line 42 /some/file.vim
+
+when you save /some/file.vim.
+
+Now your error messages that come from perl will have correct file names and line numbers.
