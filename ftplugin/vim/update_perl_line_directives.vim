@@ -17,6 +17,9 @@ let loaded_update_perl_line_directives = 1
 
 " Interface {{{1
 
+" FIXME: you have to reload vim each time when testing this, I think because
+" the existing autocommand with the old routing still happens (the redefed
+" version of the perl command never gets linked in).
 autocmd BufWritePre *.vim,*.vimrc call s:UpdateLineDirectives()
 
 " Implementation {{{1
@@ -32,7 +35,7 @@ endfunction
 
 if has('perl') "{{{2
 perl <<EOF
-# line 35 "~/projects/libblk/vim/update_perl_line_directives/update_perl_line_directives.vim"
+# line 39 "~/projects/libblk/vim/update_perl_line_directives/update_perl_line_directives.vim"
 
 package Updateperllinedirectives;
 
@@ -40,9 +43,15 @@ use strict;
 use warnings FATAL => 'all';
 use warnings NONFATAL => 'redefine';
 use File::Temp qw( tempfile );
+use IO::Handle;
 
 sub UpdateLineDirectives_perl #{{{3
 {
+
+    # FIXME: the die messages never make it up through to vim UI in this case,
+    # I think because things are happening in an autocommand.  Is there a
+    # better way?
+
     my $fn = VIM::Eval('expand("%:p")');
 
     # Perl can deal with the nice ~/ home dir abbreviation in line directives.
@@ -55,6 +64,9 @@ sub UpdateLineDirectives_perl #{{{3
 
     my @nbc = @ebc;   # New buffer contents to be set
 
+    #open(MYLOG2, ">/tmp/dalog") or die;
+    #MYLOG2->autoflush();
+
     for ( my $ii = 0 ; $ii < @nbc ; $ii++ ) {
         my $cl = $nbc[$ii];
         my $nl = $nbc[$ii + 1];
@@ -62,11 +74,11 @@ sub UpdateLineDirectives_perl #{{{3
             # +1 (because 1-based) +1 (talking next line) +1 (because perl line
             # directives refer to the number of the next line) == +3
             my $new_nl = "# line ".($ii + 3)." \"$fn\"";   # New next line.
-            if ( $nl =~ m/^#\s+line\s+\d+\s+".+"\s*$/ ) {
+            if ( defined($nl) and $nl =~ m/^#\s+line\s+\d+\s+".+"\s*$/ ) {
                 $nbc[$ii + 1] = $new_nl;
             }
             else {
-                # FIXME: splice is slooooww compared to allternatives if we end
+                # FIXME: splice is slooooww compared to alternatives if we end
                 # up doing it many times
                 splice(@nbc, $ii + 1, 0, $new_nl);
             }
@@ -88,12 +100,35 @@ sub UpdateLineDirectives_perl #{{{3
         die "diff command failed";
     }
     my @dol = split("\n", $diffout);    # Diff output lines
-    foreach ( @dol ) {
-        not m/^[<>]/ or m/^[<>] # line \d+ ".*"$/
+
+    for ( my $ii = 0 ; $ii < @dol ; $ii++ ) {
+        my $cl = $dol[$ii];
+        my $nl = $dol[$ii + 1];
+        # This wacky condition is hand-matched to what diff spits out in the
+        # cases we know are ok.  Mainly we don't wnat to see any changes except
+        # line directives being added, but if we end up changing the end of a
+        # file then we have some additional things that can happen.
+        (not $cl =~ m/^[<>]/) or
+        ($cl =~ m/^[<>] # line \d+ ".*"$/) or
+        $nl eq '\ No newline at end of file' or
+        ($nl =~ m/^[<>] # line \d+ ".*"$/ and
+             $dol[$ii + 2] eq '\ No newline at end of file')
             or die "oops, we almost made an unexpected change";
     }
 
-    $curbuf->Set(1, @nbc);
+    unlink($otfn, $ntfn) == 2 or die "unexpected failure to delete temp files";
+
+    # The somewhat weird embedded perl API forces this peculiar approach,
+    # because ->Set silently does nothing for lines that done exist rather than
+    # adding them.  But we don't want to delete everthing and just use append,
+    # because that disturbes cursor position.
+    for ( my $ii = 0 ; $ii < @ebc ; $ii++ ) {
+        $curbuf->Set($ii + 1, $nbc[$ii]);
+    }
+    my $lines_added = @nbc - @ebc;
+    for ( my $ii = 0 ; $ii < $lines_added ; $ii++ ) {
+        $curbuf->Append(scalar(@ebc) + $ii, $nbc[@nbc - $lines_added + $ii]);
+    }
 }
 
 EOF
@@ -105,4 +140,3 @@ endif
 
 " Ending vim Module Boilerplate {{{1
 let &cpo = s:save_cpo
-
